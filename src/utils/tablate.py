@@ -182,3 +182,20 @@ def print_full_report(df: pd.DataFrame) -> None:
     print_dataframe_head(df, rows=3, title="Sample Data (3 Rows)")
 
     print(f"{'='*80}\n")
+
+
+def print_country_distribution(df: pd.DataFrame, top_n: int = 10) -> None:
+    """Displays the distribution of records by country."""
+    if 'country' not in df.columns:
+        print("⚠️  'country' column not found for distribution analysis\n")
+        return
+
+    print(f"\n🌍 Top {top_n} Country Distribution")
+    print(f"{'─' * 80}")
+    
+    dist = df['country'].value_counts().reset_index()
+    dist.columns = ['Country', 'Count']
+    dist['Percentage'] = (dist['Count'] / len(df) * 100).map("{:.2f}%".format)
+    
+    print(tabulate(dist.head(top_n), headers='keys', tablefmt='grid', showindex=False))
+    print()

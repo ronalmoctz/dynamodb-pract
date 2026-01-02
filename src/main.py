@@ -81,7 +81,9 @@ def main(
     save_cleaned: bool = True,
     save_format: str = "csv",
     timestamped: bool = False,
-    load_dynamo: bool = True
+    load_dynamo: bool = False,
+    run_analytics: bool = True,
+    run_pipeline: bool = False
 ):
     """Main data loading and cleaning pipeline.
 
@@ -92,137 +94,185 @@ def main(
         save_format: Format to save ('csv'|'parquet').
         timestamped: If True, saves with timestamp; otherwise overwrites 'latest'.
         load_dynamo: If True, loads data to DynamoDB.
+        run_analytics: If True, runs analytics queries.
+        run_pipeline: If True, runs the data cleaning/loading pipeline.
     """
     print(f"\n{'='*60}")
     print("🚀 Starting E-commerce Data Pipeline")
     print(f"{'='*60}")
-    print(f"📦 S3 Bucket: {S3_BUCKET_NAME}")
-    print(f"📄 S3 Key: {S3_RAW_DATA}")
-    print(f"💾 Use Cache: {use_cache}")
     
-    # Load data from S3
-    df = load_data_from_s3(
-        bucket=S3_BUCKET_NAME,
-        key=S3_RAW_DATA,
-        use_cache=use_cache,
-        force_download=force_download
-    )
-    
-    print(f"\n📋 Original Data: {len(df):,} rows, {len(df.columns)} columns")
-    
-    # Clean data
-    df = clean_data(df)
-    
-    print(f"\n✨ Final Data: {len(df):,} rows, {len(df.columns)} columns")
-    print(f"\n📌 Columns: {df.columns.tolist()}")
-    
-    # ========================================
-    # STEP 2: DATA TRANSFORMATION REPORT
-    # ========================================
-    print("\n🧹 STEP 2: DATA TRANSFORMATION REPORT")
-    print("-"*80)
-
-    # Generate and show summary
-    summary = get_data_summary(df)
-    print_data_summary(summary)
-
-    # Show compact visual report
-    print_full_report(df)
+    df = None
 
     # ========================================
-    # STEP 3: LOAD (Save to S3)
+    # PIPELINE EXECUTION (Optional)
     # ========================================
-    if save_cleaned:
-        print("\n💾 STEP 3: UPLOADING CLEANED DATA TO S3")
+    if run_pipeline:
+        print(f"📦 S3 Bucket: {S3_BUCKET_NAME}")
+        print(f"📄 S3 Key: {S3_RAW_DATA}")
+        print(f"💾 Use Cache: {use_cache}")
+        
+        # Load data from S3
+        df = load_data_from_s3(
+            bucket=S3_BUCKET_NAME,
+            key=S3_RAW_DATA,
+            use_cache=use_cache,
+            force_download=force_download
+        )
+        
+        print(f"\n📋 Original Data: {len(df):,} rows, {len(df.columns)} columns")
+        
+        # Clean data
+        df = clean_data(df)
+        
+        print(f"\n✨ Final Data: {len(df):,} rows, {len(df.columns)} columns")
+        print(f"\n📌 Columns: {df.columns.tolist()}")
+        
+        # ========================================
+        # STEP 2: DATA TRANSFORMATION REPORT
+        # ========================================
+        print("\n🧹 STEP 2: DATA TRANSFORMATION REPORT")
         print("-"*80)
 
-        result_timestamped = {}
-        result_latest = {}
+        # Generate and show summary
+        summary = get_data_summary(df)
+        print_data_summary(summary)
 
-        # Option A: Save with timestamp (history)
-        if timestamped:
+        # Show compact visual report
+        print_full_report(df)
+
+        # ========================================
+        # STEP 3: LOAD (Save to S3)
+        # ========================================
+        if save_cleaned:
+            print("\n💾 STEP 3: UPLOADING CLEANED DATA TO S3")
+            print("-"*80)
+
+            result_timestamped = {}
+            result_latest = {}
+
+            # Option A: Save with timestamp (history)
+            if timestamped:
+                try:
+                    result_timestamped = save_with_timestamp(
+                        df=df,
+                        bucket=S3_BUCKET_NAME,
+                        prefix="cleaned",
+                        base_name="ecommerce_europa",
+                        file_format=save_format
+                    )
+                except Exception as e:
+                    result_timestamped = {"success": False, "error": str(e)}
+
+            # Option B: Save "latest" version (always latest)
             try:
-                result_timestamped = save_with_timestamp(
+                result_latest = save_latest(
                     df=df,
                     bucket=S3_BUCKET_NAME,
                     prefix="cleaned",
-                    base_name="ecommerce_europa",
+                    base_name="ecommerce_europa_latest",
                     file_format=save_format
                 )
             except Exception as e:
-                result_timestamped = {"success": False, "error": str(e)}
+                result_latest = {"success": False, "error": str(e)}
 
-        # Option B: Save "latest" version (always latest)
-        try:
-            result_latest = save_latest(
-                df=df,
-                bucket=S3_BUCKET_NAME,
-                prefix="cleaned",
-                base_name="ecommerce_europa_latest",
-                file_format=save_format
-            )
-        except Exception as e:
-            result_latest = {"success": False, "error": str(e)}
+            # ========================================
+            # STEP 4: VERIFICATION
+            # ========================================
+            print("\n🔍 STEP 4: VERIFICATION")
+            print("-"*80)
 
-        # ========================================
-        # STEP 4: VERIFICATION
-        # ========================================
-        print("\n🔍 STEP 4: VERIFICATION")
-        print("-"*80)
+            if result_latest.get("success") and result_latest.get("s3_uri"):
+                key = result_latest["s3_uri"].replace(f"s3://{S3_BUCKET_NAME}/", "")
+                try:
+                    verification = verify_s3_file(bucket=S3_BUCKET_NAME, key=key)
+                    if verification.get("exists"):
+                        print(f"✅ File verified in S3")
+                        print(f"   Size: {verification['size_mb']:.2f} MB")
+                        print(f"   Last Modified: {verification['last_modified']}")
+                    else:
+                        print(f"⚠️  Could not verify file in S3: {verification.get('error')}")
+                except Exception as e:
+                    print(f"⚠️  Error verifying in S3: {e}")
+            else:
+                print("⚠️  'Latest' version was not saved correctly; verification skipped.")
 
-        if result_latest.get("success") and result_latest.get("s3_uri"):
-            key = result_latest["s3_uri"].replace(f"s3://{S3_BUCKET_NAME}/", "")
+            # List all cleaned files
+            print("\n📁 Files in 'cleaned/' folder:")
             try:
-                verification = verify_s3_file(bucket=S3_BUCKET_NAME, key=key)
-                if verification.get("exists"):
-                    print(f"✅ File verified in S3")
-                    print(f"   Size: {verification['size_mb']:.2f} MB")
-                    print(f"   Last Modified: {verification['last_modified']}")
-                else:
-                    print(f"⚠️  Could not verify file in S3: {verification.get('error')}")
+                files = list_cleaned_files(S3_BUCKET_NAME, prefix="cleaned/")
+                for f in files:
+                    print(f"   • {f['key']} ({f['size_mb']:.2f} MB)")
             except Exception as e:
-                print(f"⚠️  Error verifying in S3: {e}")
-        else:
-            print("⚠️  'Latest' version was not saved correctly; verification skipped.")
+                print(f"⚠️  Error listing files in S3: {e}")
 
-        # List all cleaned files
-        print("\n📁 Files in 'cleaned/' folder:")
-        try:
-            files = list_cleaned_files(S3_BUCKET_NAME, prefix="cleaned/")
-            for f in files:
-                print(f"   • {f['key']} ({f['size_mb']:.2f} MB)")
-        except Exception as e:
-            print(f"⚠️  Error listing files in S3: {e}")
+        # ========================================
+        # STEP 5: LOAD TO DYNAMODB
+        # ========================================
+        if load_dynamo:
+            print("\n⚡ STEP 5: LOADING TO DYNAMODB")
+            print("-"*80)
+            try:
+                load_orders_to_dynamodb(df, table_name="Ecommerce_eu")
+            except Exception as e:
+                print(f"❌ Error loading to DynamoDB: {e}")
+    else:
+        print("ℹ️  Skipping data cleaning and loading pipeline (run_pipeline=False).")
+
 
     # ========================================
-    # STEP 5: LOAD TO DYNAMODB
+    # STEP 6: ANALYTICS EXECUTION
     # ========================================
-    if load_dynamo:
-        print("\n⚡ STEP 5: LOADING TO DYNAMODB")
+    if run_analytics:
+        from analityics.query import (
+            get_orders_by_client,
+            get_sales_by_country,
+            get_orders_by_date_range,
+            calculate_revenue_by_date
+        )
+        from analityics.plots import plot_sales_trend, plot_order_distribution
+        
+        print("\n📈 STEP 6: ANALYTICS REPORT")
         print("-"*80)
-        try:
-            load_orders_to_dynamodb(df, table_name="Ecommerce_eu")
-        except Exception as e:
-            print(f"❌ Error loading to DynamoDB: {e}")
+        
+        # 1. Sales by Country (United Kingdom)
+        print("\n🌍 Sales for 'United Kingdom':")
+        uk_sales = get_sales_by_country("United Kingdom")
+        print(f"   Items found: {len(uk_sales)}")
+        
+        if uk_sales:
+             # Plot Trend
+            plot_sales_trend(
+                uk_sales, 
+                "Sales Trend - United Kingdom", 
+                "uk_sales_trend.png"
+            )
 
+        # 2. Orders by Client (ID: 17850)
+        print("\n👤 Orders for Customer 17850:")
+        customer_orders = get_orders_by_client("17850")
+        print(f"   Items found: {len(customer_orders)}")
+        
+        if customer_orders:
+            # Plot Distribution
+            plot_order_distribution(
+                customer_orders, 
+                "Order Amount Distribution - Customer 17850", 
+                "customer_17850_dist.png"
+            )
+        
+        # 3. Revenue on specific date (2010-12-01)
+        target_date = "2010-12-01"
+        print(f"\n💰 Total Revenue on {target_date}:")
+        revenue = calculate_revenue_by_date(target_date)
+        print(f"   £ {revenue:,.2f}")
+    
 
     # ========================================
     # FINAL SUMMARY
     # ========================================
     print("\n" + "="*80)
-    print("✅ PIPELINE COMPLETED SUCCESSFULLY")
+    print("✅ EXECUTION COMPLETED")
     print("="*80)
-    print(f"\n📊 Results:")
-    print(f"   • Processed Rows: {len(df):,}")
-    if save_cleaned:
-        if timestamped:
-            print(f"   • Timestamped File: {result_timestamped.get('s3_uri', 'N/A')}")
-        print(f"   • Latest File: {result_latest.get('s3_uri', 'N/A')}")
-    print("\n" + "="*80 + "\n")
-    
-    print(f"{'='*60}")
-    print("✅ Pipeline finished")
-    print(f"{'='*60}\n")
     
     return df
 
@@ -233,11 +283,10 @@ if __name__ == "__main__":
     main(
         use_cache=True, 
         force_download=False, 
-        save_cleaned=True, 
+        save_cleaned=False, 
         save_format='csv', 
         timestamped=False,
-        load_dynamo=True
+        load_dynamo=False,
+        run_analytics=True,
+        run_pipeline=False
     )
-    
-    # Optional: clear cache afterwards
-    # clear_cache()

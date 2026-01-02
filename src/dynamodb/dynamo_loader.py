@@ -1,7 +1,7 @@
 import pandas as pd
 from decimal import Decimal
 from typing import List, Dict, Any
-from .dynamo_client import get_dynamodb_resource, create_table_if_not_exists
+from .dynamo_client import get_dynamodb_resource
 
 def convert_float_to_decimal(item: Dict[str, Any]) -> Dict[str, Any]:
     """DynamoDB does not support float, so we convert to Decimal."""
@@ -32,10 +32,13 @@ def prepare_dataframe_for_dynamo(df: pd.DataFrame) -> List[Dict[str, Any]]:
     
     column_map = {
         'invoiceno': 'InvoiceNo',
+        'stockcode': 'StockCode',
         'invoicedate': 'InvoiceDate',
         'country': 'Country',
         'customerid': 'CustomerID',
-        'total_amount': 'TotalAmount'
+        'total_amount': 'TotalAmount',
+        'quantity': 'Quantity',
+        'unitprice': 'UnitPrice'
     }
     
     # Rename columns if they exist in lowercase
@@ -43,18 +46,29 @@ def prepare_dataframe_for_dynamo(df: pd.DataFrame) -> List[Dict[str, Any]]:
     
     # Ensure InvoiceDate is string ISO format
     if 'InvoiceDate' in df_clean.columns:
-        df_clean['InvoiceDate'] = pd.to_datetime(df_clean['InvoiceDate']).dt.isoformat()
+        df_clean['InvoiceDate'] = pd.to_datetime(df_clean['InvoiceDate']).dt.strftime('%Y-%m-%dT%H:%M:%S')
     
-    # Fill NaN for CustomerID if missing (DynamoDB doesn't like keys with null values for index)
+    # Fill NaN for CustomerID if missing
     if 'CustomerID' in df_clean.columns:
          df_clean['CustomerID'] = df_clean['CustomerID'].fillna('Guest').astype(str)
     else:
-        # Create a dummy column if it doesn't exist to satisfy the GSI requirement if we want to use it
         df_clean['CustomerID'] = 'Guest'
 
     # Drop rows where PK is missing
     df_clean.dropna(subset=['InvoiceNo'], inplace=True)
     df_clean['InvoiceNo'] = df_clean['InvoiceNo'].astype(str)
+    
+    # AGGREGATE DUPLICATES to avoid DynamoDB Composite Key collisions
+    # (InvoiceNo + StockCode) must be unique
+    print("   Grouping duplicates by (InvoiceNo, StockCode)...")
+    df_clean = df_clean.groupby(['InvoiceNo', 'StockCode'], as_index=False).agg({
+        'Quantity': 'sum',
+        'TotalAmount': 'sum',
+        'InvoiceDate': 'first',
+        'Country': 'first',
+        'CustomerID': 'first',
+        'UnitPrice': 'first'  # Assuming price is constant for same item in same invoice
+    })
 
     # Convert to list of dicts
     records = df_clean.to_dict('records')
@@ -68,9 +82,7 @@ def load_orders_to_dynamodb(df: pd.DataFrame, table_name: str = "Ecommerce_eu"):
     """
     print(f"\n🚀 Starting DynamoDB Load to table: {table_name}")
     
-    # Ensure table exists
-    create_table_if_not_exists(table_name)
-    
+    # We assume the table is already created via bash script
     dynamodb = get_dynamodb_resource()
     table = dynamodb.Table(table_name)
     
