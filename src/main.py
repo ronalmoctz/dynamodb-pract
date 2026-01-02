@@ -21,6 +21,9 @@ from utils.tablate import (
 # Data saving functions
 from data_save import save_with_timestamp, save_latest, verify_s3_file, list_cleaned_files
 
+# DynamoDB functions
+from dynamodb.dynamo_loader import load_orders_to_dynamodb
+
 # Validate required configuration
 if not S3_BUCKET_NAME or not S3_RAW_DATA:
     raise ValueError("S3_BUCKET_NAME or S3_RAW_DATA are not configured. Check your .env and config.py")
@@ -77,7 +80,8 @@ def main(
     force_download: bool = False,
     save_cleaned: bool = True,
     save_format: str = "csv",
-    timestamped: bool = False
+    timestamped: bool = False,
+    load_dynamo: bool = True
 ):
     """Main data loading and cleaning pipeline.
 
@@ -87,6 +91,7 @@ def main(
         save_cleaned: If True, saves the cleaned DataFrame to S3.
         save_format: Format to save ('csv'|'parquet').
         timestamped: If True, saves with timestamp; otherwise overwrites 'latest'.
+        load_dynamo: If True, loads data to DynamoDB.
     """
     print(f"\n{'='*60}")
     print("🚀 Starting E-commerce Data Pipeline")
@@ -128,7 +133,7 @@ def main(
     # STEP 3: LOAD (Save to S3)
     # ========================================
     if save_cleaned:
-        print("\n💾 STEP 3: UPLOADING CLEANED DATA")
+        print("\n💾 STEP 3: UPLOADING CLEANED DATA TO S3")
         print("-"*80)
 
         result_timestamped = {}
@@ -189,18 +194,31 @@ def main(
         except Exception as e:
             print(f"⚠️  Error listing files in S3: {e}")
 
-        # ========================================
-        # FINAL SUMMARY
-        # ========================================
-        print("\n" + "="*80)
-        print("✅ PIPELINE COMPLETED SUCCESSFULLY")
-        print("="*80)
-        print(f"\n📊 Results:")
-        print(f"   • Processed Rows: {len(df):,}")
+    # ========================================
+    # STEP 5: LOAD TO DYNAMODB
+    # ========================================
+    if load_dynamo:
+        print("\n⚡ STEP 5: LOADING TO DYNAMODB")
+        print("-"*80)
+        try:
+            load_orders_to_dynamodb(df, table_name="Ecommerce_eu")
+        except Exception as e:
+            print(f"❌ Error loading to DynamoDB: {e}")
+
+
+    # ========================================
+    # FINAL SUMMARY
+    # ========================================
+    print("\n" + "="*80)
+    print("✅ PIPELINE COMPLETED SUCCESSFULLY")
+    print("="*80)
+    print(f"\n📊 Results:")
+    print(f"   • Processed Rows: {len(df):,}")
+    if save_cleaned:
         if timestamped:
             print(f"   • Timestamped File: {result_timestamped.get('s3_uri', 'N/A')}")
         print(f"   • Latest File: {result_latest.get('s3_uri', 'N/A')}")
-        print("\n" + "="*80 + "\n")
+    print("\n" + "="*80 + "\n")
     
     print(f"{'='*60}")
     print("✅ Pipeline finished")
@@ -212,7 +230,14 @@ def main(
 if __name__ == "__main__":
     # Execute pipeline with cache enabled (development)
     # Set use_cache=False for direct S3 reading
-    main(use_cache=True, force_download=False, save_cleaned=True, save_format='csv', timestamped=False)
+    main(
+        use_cache=True, 
+        force_download=False, 
+        save_cleaned=True, 
+        save_format='csv', 
+        timestamped=False,
+        load_dynamo=True
+    )
     
     # Optional: clear cache afterwards
     # clear_cache()
