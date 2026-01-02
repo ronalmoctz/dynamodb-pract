@@ -1,0 +1,37 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+env/
+venv/
+
+# Environment variables (Sensitive Data)
+.env
+.env.*
+
+# Data
+data/
+*.csv
+*.parquet
+*.json
+*.xlsx
+*.sqlite
+*.db
+
+# Legs and Debugging
+*.log
+logs/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS/Junk
+.DS_Store
+Thumbs.db
