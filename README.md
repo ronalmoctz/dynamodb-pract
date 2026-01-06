@@ -8,7 +8,7 @@
 ## 📌 Proyecto Práctico
 Este proyecto es una implementación profesional de **Ingeniería de Datos y Analítica Cloud** desarrollada por un **Recién Egresado de Ingeniería en Sistemas**, demostrando habilidades en integración de servicios AWS, ETL pipelines y arquitectura de software moderna.
 
-> 🤖 **AI Collaboration**: Desarrollado en pair-programming con agentes de IA (**Cloud Opus** y **Gemini 1.5 Pro**) para potenciar la productividad, refinamiento de código y aplicación de mejores prácticas.
+> 🤖 **AI Collaboration**: Desarrollado en pair-programming con agentes de IA (**Cloud Opus** y **Gemini 3 Pro**) para potenciar la productividad, refinamiento de código y aplicación de mejores prácticas.
 
 ---
 
