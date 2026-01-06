@@ -223,13 +223,19 @@ def main(
     # STEP 6: ANALYTICS EXECUTION
     # ========================================
     if run_analytics:
-        from analityics.query import (
+        from analityics import (
+            # Queries
             get_orders_by_client,
             get_sales_by_country,
-            get_orders_by_date_range,
-            calculate_revenue_by_date
+            get_sales_for_geo_visualization,
+            get_sales_for_histogram_analysis,
+            calculate_revenue_by_date,
+            # Plots
+            plot_sales_trend,
+            plot_order_distribution,
+            plot_sales_bubble_map,
+            plot_amount_histogram_by_country,
         )
-        from analityics.plots import plot_sales_trend, plot_order_distribution
         
         print("\n📈 STEP 6: ANALYTICS REPORT")
         print("-"*80)
@@ -240,7 +246,6 @@ def main(
         print(f"   Items found: {len(uk_sales)}")
         
         if uk_sales:
-             # Plot Trend
             plot_sales_trend(
                 uk_sales, 
                 "Sales Trend - United Kingdom", 
@@ -253,7 +258,6 @@ def main(
         print(f"   Items found: {len(customer_orders)}")
         
         if customer_orders:
-            # Plot Distribution
             plot_order_distribution(
                 customer_orders, 
                 "Order Amount Distribution - Customer 17850", 
@@ -265,6 +269,30 @@ def main(
         print(f"\n💰 Total Revenue on {target_date}:")
         revenue = calculate_revenue_by_date(target_date)
         print(f"   £ {revenue:,.2f}")
+        
+        # 4. NEW: Geographic Bubble Map (All Countries)
+        print("\n🗺️  Generating Geographic Bubble Map...")
+        geo_data = get_sales_for_geo_visualization()
+        print(f"   Items for geo visualization: {len(geo_data)}")
+        
+        if geo_data:
+            plot_sales_bubble_map(
+                geo_data,
+                "Global Sales Distribution by Country",
+                "sales_bubble_map.png"
+            )
+        
+        # 5. NEW: Histogram by Country
+        print("\n📊 Generating Order Amount Histogram by Country...")
+        histogram_data = get_sales_for_histogram_analysis()
+        print(f"   Items for histogram: {len(histogram_data)}")
+        
+        if histogram_data:
+            plot_amount_histogram_by_country(
+                histogram_data,
+                "Order Value Distribution by Market",
+                "order_histogram_by_country.png"
+            )
     
 
     # ========================================
