@@ -45,8 +45,12 @@ def plot_sales_trend(data: List[Dict[str, Any]], title: str, filename: str):
     )
     
     # Format axes
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
-    ax.xaxis.set_major_locator(mdates.DayLocator(interval=2))
+    # Format axes
+    # Use AutoDateLocator to automatically select appropriate tick intervals based on data range
+    # asking for ~10 ticks to avoid overcrowding
+    locator = mdates.AutoDateLocator(minticks=5, maxticks=12)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
     plt.xticks(rotation=45)
     
     ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f'{x/1000:.1f}k'))
